@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioInfo Search - 生物信息智能检索系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .card-shadow { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1); }
+        .pulse-dot { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a1a1a1; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app">
+        <!-- 顶部导航 -->
+        <nav class="gradient-bg text-white shadow-lg sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                        <div>
+                            <h1 class="text-xl font-bold">BioInfo Search</h1>
+                            <p class="text-xs text-green-200">生物信息智能检索系统</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button @click="activeTab = 'search'" 
+                                :class="activeTab === 'search' ? 'bg-white/20' : 'hover:bg-white/10'"
+                                class="px-4 py-2 rounded-lg transition-colors">
+                            🔍 搜索
+                        </button>
+                        <button @click="activeTab = 'history'" 
+                                :class="activeTab === 'history' ? 'bg-white/20' : 'hover:bg-white/10'"
+                                class="px-4 py-2 rounded-lg transition-colors">
+                            📋 历史
+                        </button>
+                        <button @click="activeTab = 'stats'" 
+                                :class="activeTab === 'stats' ? 'bg-white/20' : 'hover:bg-white/10'"
+                                class="px-4 py-2 rounded-lg transition-colors">
+                            📊 统计
+                        </button>
+                        <div class="flex items-center space-x-2 ml-4 pl-4 border-l border-white/30">
+                            <span class="w-2 h-2 rounded-full" 
+                                  :class="systemStatus.connected ? 'bg-green-400 pulse-dot' : 'bg-red-400'"></span>
+                            <span class="text-sm">{{ systemStatus.connected ? 'LLM在线' : 'LLM离线' }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="max-w-7xl mx-auto px-4 py-8">
+            <!-- 搜索页面 -->
+            <div v-show="activeTab === 'search'">
+                <!-- 搜索框 -->
+                <div class="glass rounded-2xl card-shadow p-8 mb-8">
+                    <div class="max-w-3xl mx-auto">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2 text-center">智能生物信息检索</h2>
+                        <p class="text-gray-500 text-center mb-6">输入自然语言查询，AI将自动解析并从专业数据库检索相关信息</p>
+                        
+                        <div class="relative">
+                            <textarea v-model="searchQuery" 
+                                      @keydown.enter.ctrl="performSearch"
+                                      placeholder="例如：查找关于B群脑膜炎球菌疫苗的三期临床试验..."
+                                      class="w-full p-4 pr-32 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all resize-none"
+                                      rows="3"></textarea>
+                            <button @click="performSearch" 
+                                    :disabled="searching || !searchQuery.trim()"
+                                    class="absolute right-3 bottom-3 gradient-bg text-white px-6 py-2 rounded-lg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+                                <svg v-if="searching" class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                <span>{{ searching ? '搜索中...' : '开始搜索' }}</span>
+                            </button>
+                        </div>
+                        
+                        <!-- 搜索选项 -->
+                        <div class="flex items-center justify-between mt-4">
+                            <div class="flex items-center space-x-4">
+                                <label class="flex items-center space-x-2 cursor-pointer">
+                                    <input type="checkbox" v-model="searchOptions.useLLM" class="w-4 h-4 text-green-600 rounded">
+                                    <span class="text-sm text-gray-600">使用LLM解析</span>
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-sm text-gray-600">最大结果：</span>
+                                <select v-model="searchOptions.maxResults" class="border rounded px-2 py-1 text-sm">
+                                    <option :value="50">50</option>
+                                    <option :value="100">100</option>
+                                    <option :value="200">200</option>
+                                    <option :value="500">500</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- 数据源选择（分组显示） -->
+                        <div class="mt-4 pt-4 border-t border-gray-100">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- 临床试验数据源 -->
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700 block mb-2">🏥 临床试验</span>
+                                    <div class="flex flex-wrap gap-3">
+                                        <label class="flex items-center space-x-1 cursor-pointer">
+                                            <input type="checkbox" v-model="searchOptions.sources" value="clinicaltrials" class="w-4 h-4 text-green-600 rounded">
+                                            <span class="text-sm">ClinicalTrials.gov</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <!-- 文献数据源 -->
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700 block mb-2">📚 学术文献</span>
+                                    <div class="flex flex-wrap gap-3">
+                                        <label class="flex items-center space-x-1 cursor-pointer">
+                                            <input type="checkbox" v-model="searchOptions.sources" value="pubmed" class="w-4 h-4 text-green-600 rounded">
+                                            <span class="text-sm">PubMed</span>
+                                        </label>
+                                        <label class="flex items-center space-x-1 cursor-pointer">
+                                            <input type="checkbox" v-model="searchOptions.sources" value="semantic_scholar" class="w-4 h-4 text-green-600 rounded">
+                                            <span class="text-sm">Semantic Scholar</span>
+                                        </label>
+                                        <label class="flex items-center space-x-1 cursor-pointer">
+                                            <input type="checkbox" v-model="searchOptions.sources" value="openalex" class="w-4 h-4 text-green-600 rounded">
+                                            <span class="text-sm">OpenAlex</span>
+                                        </label>
+                                        <label class="flex items-center space-x-1 cursor-pointer">
+                                            <input type="checkbox" v-model="searchOptions.sources" value="europe_pmc" class="w-4 h-4 text-green-600 rounded">
+                                            <span class="text-sm">Europe PMC</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <!-- 预印本数据源 -->
+                                <div class="md:col-span-2">
+                                    <span class="text-sm font-medium text-gray-700 block mb-2">📄 预印本（最新研究）</span>
+                                    <div class="flex flex-wrap gap-3">
+                                        <label class="flex items-center space-x-1 cursor-pointer">
+                                            <input type="checkbox" v-model="searchOptions.sources" value="biorxiv" class="w-4 h-4 text-green-600 rounded">
+                                            <span class="text-sm">bioRxiv</span>
+                                        </label>
+                                        <label class="flex items-center space-x-1 cursor-pointer">
+                                            <input type="checkbox" v-model="searchOptions.sources" value="medrxiv" class="w-4 h-4 text-green-600 rounded">
+                                            <span class="text-sm">medRxiv</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 示例查询 -->
+                        <div class="mt-4 pt-4 border-t border-gray-100">
+                            <span class="text-sm text-gray-500">示例查询：</span>
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                <button v-for="example in exampleQueries" :key="example"
+                                        @click="searchQuery = example"
+                                        class="px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm hover:bg-green-100 transition-colors">
+                                    {{ example }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 任务状态 -->
+                <transition name="fade">
+                    <div v-if="currentTask" class="glass rounded-xl card-shadow p-6 mb-8">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-gray-800">任务进度</h3>
+                            <span class="px-3 py-1 rounded-full text-sm font-medium"
+                                  :class="{
+                                      'bg-blue-100 text-blue-700': currentTask.status === 'processing',
+                                      'bg-green-100 text-green-700': currentTask.status === 'completed',
+                                      'bg-red-100 text-red-700': currentTask.status === 'failed'
+                                  }">
+                                {{ statusText[currentTask.status] || currentTask.status }}
+                            </span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                            <div class="gradient-bg h-2 rounded-full transition-all duration-500"
+                                 :style="{ width: (currentTask.progress * 100) + '%' }"></div>
+                        </div>
+                        <p class="text-sm text-gray-600">{{ currentTask.message }}</p>
+                        
+                        <!-- 解析结果预览 -->
+                        <div v-if="parsedQuery" class="mt-4 p-4 bg-gray-50 rounded-lg">
+                            <h4 class="font-medium text-gray-700 mb-2">查询解析结果：</h4>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div v-if="parsedQuery.condition">
+                                    <span class="text-gray-500">疾病/条件：</span>
+                                    <span class="font-medium">{{ parsedQuery.condition }}</span>
+                                </div>
+                                <div v-if="parsedQuery.intervention">
+                                    <span class="text-gray-500">干预类型：</span>
+                                    <span class="font-medium">{{ parsedQuery.intervention }}</span>
+                                </div>
+                                <div v-if="parsedQuery.phase">
+                                    <span class="text-gray-500">试验阶段：</span>
+                                    <span class="font-medium">{{ parsedQuery.phase }}</span>
+                                </div>
+                                <div v-if="parsedQuery.keywords && parsedQuery.keywords.length">
+                                    <span class="text-gray-500">关键词：</span>
+                                    <span class="font-medium">{{ parsedQuery.keywords.slice(0, 5).join(', ') }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </transition>
+
+                <!-- 搜索结果 -->
+                <div v-if="searchResults" class="space-y-6">
+                    <!-- 结果摘要 -->
+                    <div class="glass rounded-xl card-shadow p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold text-gray-800">搜索结果</h3>
+                            <div class="flex items-center space-x-4">
+                                <span class="text-gray-600">共 {{ searchResults.total_results }} 条结果</span>
+                                <button @click="exportData('csv')" 
+                                        class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center space-x-2">
+                                    <span>导出CSV</span>
+                                </button>
+                                <button @click="exportData('xlsx')" 
+                                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2">
+                                    <span>导出Excel</span>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 数据源统计 -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div v-for="(count, source) in searchResults.sources" :key="source"
+                                 class="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-lg">
+                                <div class="text-2xl font-bold text-green-700">{{ count }}</div>
+                                <div class="text-sm text-gray-600">{{ sourceNames[source] || source }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 结果标签页 -->
+                    <div class="glass rounded-xl card-shadow overflow-hidden">
+                        <div class="flex border-b overflow-x-auto">
+                            <button @click="resultTab = 'trials'" 
+                                    :class="resultTab === 'trials' ? 'border-b-2 border-green-500 text-green-700 bg-green-50' : 'text-gray-600'"
+                                    class="px-6 py-3 font-medium transition-colors whitespace-nowrap">
+                                🏥 临床试验 ({{ searchResults.sources.clinicaltrials || 0 }})
+                            </button>
+                            <button @click="resultTab = 'literature'" 
+                                    :class="resultTab === 'literature' ? 'border-b-2 border-green-500 text-green-700 bg-green-50' : 'text-gray-600'"
+                                    class="px-6 py-3 font-medium transition-colors whitespace-nowrap">
+                                📚 文献 ({{ literatureData.length }})
+                            </button>
+                            <button @click="resultTab = 'preprints'" 
+                                    :class="resultTab === 'preprints' ? 'border-b-2 border-green-500 text-green-700 bg-green-50' : 'text-gray-600'"
+                                    class="px-6 py-3 font-medium transition-colors whitespace-nowrap">
+                                📄 预印本 ({{ preprintData.length }})
+                            </button>
+                        </div>
+                        
+                        <!-- 临床试验列表 -->
+                        <div v-show="resultTab === 'trials'" class="p-6">
+                            <!-- 分页控制 -->
+                            <div class="flex flex-wrap justify-between items-center mb-4">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-gray-600">每页：</span>
+                                    <select v-model="pagination.trials.pageSize"
+                                            @change="pagination.trials.currentPage = 1"
+                                            class="border rounded px-2 py-1 text-sm">
+                                        <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div v-if="trialsData.length" class="space-y-4">
+                                <div v-for="trial in paginatedTrialsData" :key="trial.nct_id"
+                                     class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex-1">
+                                            <div class="flex items-center space-x-3 mb-2">
+                                                <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded font-medium">
+                                                    {{ trial.nct_id }}
+                                                </span>
+                                                <span class="px-2 py-1 text-xs rounded font-medium"
+                                                      :class="statusColors[trial.status] || 'bg-gray-100 text-gray-700'">
+                                                    {{ trial.status }}
+                                                </span>
+                                                <span v-if="trial.phase" class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded font-medium">
+                                                    {{ trial.phase }}
+                                                </span>
+                                            </div>
+                                            <h4 class="font-semibold text-gray-800 mb-2">{{ trial.title }}</h4>
+                                            <p class="text-sm text-gray-600 line-clamp-2">{{ trial.summary }}</p>
+                                            <div class="flex items-center space-x-4 mt-3 text-sm text-gray-500">
+                                                <span v-if="trial.sponsor">🏢 {{ trial.sponsor }}</span>
+                                                <span v-if="trial.enrollment">👥 {{ trial.enrollment }} 人</span>
+                                                <span v-if="trial.countries">🌍 {{ trial.countries }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="ml-4 flex flex-col items-end space-y-2">
+                                            <div class="text-right text-sm">
+                                                <div class="text-gray-500">质量分数</div>
+                                                <div class="font-bold" :class="trial.quality_score >= 80 ? 'text-green-600' : trial.quality_score >= 60 ? 'text-yellow-600' : 'text-red-600'">
+                                                    {{ Math.round(trial.quality_score) }}%
+                                                </div>
+                                            </div>
+                                            <a :href="trial.url" target="_blank" 
+                                                   class="text-green-600 hover:text-green-800 text-sm">
+                                                查看详情 →
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 分页控件 -->
+                                <div v-if="getTotalPages(trialsData.length, pagination.trials.pageSize) > 1" class="flex justify-center items-center space-x-2 py-4">
+                                    <button @click="changePage('trials', Math.max(1, pagination.trials.currentPage - 1))"
+                                            class="px-3 py-1 border rounded hover:bg-gray-50 transition-colors">
+                                        上一页
+                                    </button>
+                                    <span v-for="page in getPageNumbers(trialsData.length, pagination.trials)" :key="page"
+                                          @click="changePage('trials', page)"
+                                          :class="page === pagination.trials.currentPage ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                          class="w-8 h-8 flex items-center justify-center rounded cursor-pointer transition-colors">
+                                        {{ page }}
+                                    </span>
+                                    <button @click="changePage('trials', Math.min(getTotalPages(trialsData.length, pagination.trials.pageSize), pagination.trials.currentPage + 1))"
+                                            class="px-3 py-1 border rounded hover:bg-gray-50 transition-colors">
+                                        下一页
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-else class="text-center py-12 text-gray-500">
+                                暂无临床试验数据
+                            </div>
+                        </div>
+                        
+                        <!-- 文献列表 -->
+                        <div v-show="resultTab === 'literature'" class="p-6">
+                            <!-- 分页控制 -->
+                            <div class="flex flex-wrap justify-between items-center mb-4">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-gray-600">每页：</span>
+                                    <select v-model="pagination.literature.pageSize"
+                                            @change="pagination.literature.currentPage = 1"
+                                            class="border rounded px-2 py-1 text-sm">
+                                        <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div v-if="literatureData.length" class="space-y-4">
+                                <div v-for="(article, index) in paginatedLiteratureData" :key="article.pmid || article.paper_id || index"
+                                     class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex-1">
+                                            <div class="flex items-center flex-wrap gap-2 mb-2">
+                                                <span class="px-2 py-1 text-xs rounded font-medium"
+                                                      :class="{
+                                                          'bg-green-100 text-green-700': article._source === 'pubmed',
+                                                          'bg-green-200 text-green-800': article._source === 'semantic_scholar',
+                                                          'bg-green-300 text-green-900': article._source === 'openalex',
+                                                          'bg-green-400 text-green-900': article._source === 'europe_pmc'
+                                                      }">
+                                                    {{ sourceNames[article._source] || article._source }}
+                                                </span>
+                                                <span v-if="article.pmid" class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                                                    PMID: {{ article.pmid }}
+                                                </span>
+                                                <span v-if="article.citation_count" class="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">
+                                                    📊 {{ article.citation_count }} 引用
+                                                </span>
+                                                <span v-if="article.pdf_url || article.open_access_pdf" class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                                                    📄 PDF可下载
+                                                </span>
+                                            </div>
+                                            <h4 class="font-semibold text-gray-800 mb-2">{{ article.title }}</h4>
+                                            <p class="text-sm text-gray-600">{{ article.authors }}</p>
+                                            <p v-if="article.abstract" class="text-sm text-gray-500 mt-2 line-clamp-2">{{ article.abstract }}</p>
+                                            <div class="flex items-center flex-wrap gap-4 mt-2 text-sm text-gray-500">
+                                                <span v-if="article.journal">📚 {{ article.journal }}</span>
+                                                <span v-if="article.venue">📍 {{ article.venue }}</span>
+                                                <span v-if="article.publication_date || article.year">📅 {{ article.publication_date || article.year }}</span>
+                                                <span v-if="article.doi" class="truncate max-w-xs">DOI: {{ article.doi }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="ml-4 flex flex-col items-end space-y-2">
+                                            <a v-if="article.pdf_url || article.open_access_pdf" 
+                                               :href="article.pdf_url || article.open_access_pdf" target="_blank" 
+                                               class="px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600">
+                                                下载PDF
+                                            </a>
+                                            <a :href="article.url" target="_blank" 
+                                                   class="text-green-600 hover:text-green-800 text-sm">
+                                                查看详情 →
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 分页控件 -->
+                                <div v-if="getTotalPages(literatureData.length, pagination.literature.pageSize) > 1" class="flex justify-center items-center space-x-2 py-4">
+                                    <button @click="changePage('literature', Math.max(1, pagination.literature.currentPage - 1))"
+                                            class="px-3 py-1 border rounded hover:bg-gray-50 transition-colors">
+                                        上一页
+                                    </button>
+                                    <span v-for="page in getPageNumbers(literatureData.length, pagination.literature)" :key="page"
+                                          @click="changePage('literature', page)"
+                                          :class="page === pagination.literature.currentPage ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                          class="w-8 h-8 flex items-center justify-center rounded cursor-pointer transition-colors">
+                                        {{ page }}
+                                    </span>
+                                    <button @click="changePage('literature', Math.min(getTotalPages(literatureData.length, pagination.literature.pageSize), pagination.literature.currentPage + 1))"
+                                            class="px-3 py-1 border rounded hover:bg-gray-50 transition-colors">
+                                        下一页
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-else class="text-center py-12 text-gray-500">
+                                暂无文献数据
+                            </div>
+                        </div>
+                        
+                        <!-- 预印本列表 -->
+                        <div v-show="resultTab === 'preprints'" class="p-6">
+                            <!-- 分页控制 -->
+                            <div class="flex flex-wrap justify-between items-center mb-4">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm text-gray-600">每页：</span>
+                                    <select v-model="pagination.preprints.pageSize"
+                                            @change="pagination.preprints.currentPage = 1"
+                                            class="border rounded px-2 py-1 text-sm">
+                                        <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div v-if="preprintData.length" class="space-y-4">
+                                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                                    <p class="text-sm text-yellow-800">
+                                        ⚠️ 预印本尚未经过同行评审，请谨慎引用。
+                                    </p>
+                                </div>
+                                <div v-for="(paper, index) in paginatedPreprintData" :key="paper.doi || index"
+                                     class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                                    <div class="flex items-start justify-between">
+                                        <div class="flex-1">
+                                            <div class="flex items-center flex-wrap gap-2 mb-2">
+                                                <span class="px-2 py-1 text-xs rounded font-medium"
+                                                      :class="{
+                                                          'bg-emerald-100 text-emerald-700': paper._source === 'biorxiv',
+                                                          'bg-rose-100 text-rose-700': paper._source === 'medrxiv'
+                                                      }">
+                                                    {{ sourceNames[paper._source] || paper._source }}
+                                                </span>
+                                                <span v-if="paper.category" class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                                                    {{ paper.category }}
+                                                </span>
+                                                <span v-if="paper.version" class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                                                    v{{ paper.version }}
+                                                </span>
+                                            </div>
+                                            <h4 class="font-semibold text-gray-800 mb-2">{{ paper.title }}</h4>
+                                            <p class="text-sm text-gray-600">{{ paper.authors }}</p>
+                                            <p v-if="paper.abstract" class="text-sm text-gray-500 mt-2 line-clamp-2">{{ paper.abstract }}</p>
+                                            <div class="flex items-center flex-wrap gap-4 mt-2 text-sm text-gray-500">
+                                                <span v-if="paper.publication_date">📅 {{ paper.publication_date }}</span>
+                                                <span v-if="paper.doi">DOI: {{ paper.doi }}</span>
+                                            </div>
+                                        </div>
+                                        <div class="ml-4 flex flex-col items-end space-y-2">
+                                            <a v-if="paper.pdf_url" 
+                                               :href="paper.pdf_url" target="_blank" 
+                                               class="px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600">
+                                                下载PDF
+                                            </a>
+                                            <a :href="paper.url" target="_blank" 
+                                               class="text-green-600 hover:text-green-800 text-sm">
+                                                查看详情 →
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 分页控件 -->
+                                <div v-if="getTotalPages(preprintData.length, pagination.preprints.pageSize) > 1" class="flex justify-center items-center space-x-2 py-4">
+                                    <button @click="changePage('preprints', Math.max(1, pagination.preprints.currentPage - 1))"
+                                            class="px-3 py-1 border rounded hover:bg-gray-50 transition-colors">
+                                        上一页
+                                    </button>
+                                    <span v-for="page in getPageNumbers(preprintData.length, pagination.preprints)" :key="page"
+                                          @click="changePage('preprints', page)"
+                                          :class="page === pagination.preprints.currentPage ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                          class="w-8 h-8 flex items-center justify-center rounded cursor-pointer transition-colors">
+                                        {{ page }}
+                                    </span>
+                                    <button @click="changePage('preprints', Math.min(getTotalPages(preprintData.length, pagination.preprints.pageSize), pagination.preprints.currentPage + 1))"
+                                            class="px-3 py-1 border rounded hover:bg-gray-50 transition-colors">
+                                        下一页
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-else class="text-center py-12 text-gray-500">
+                                暂无预印本数据
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 历史页面 -->
+            <div v-show="activeTab === 'history'">
+                <div class="glass rounded-xl card-shadow p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-bold text-gray-800">搜索历史</h2>
+                        <input type="text" v-model="historyKeyword" 
+                               @input="loadHistory"
+                               placeholder="搜索历史记录..."
+                               class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-200">
+                    </div>
+                    
+                    <div v-if="historyData.length" class="space-y-4">
+                        <div v-for="record in historyData" :key="record.id"
+                             class="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                             @click="viewHistoryDetail(record.id)">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h4 class="font-semibold text-gray-800">{{ record.query }}</h4>
+                                    <div class="flex items-center space-x-4 mt-2 text-sm text-gray-500">
+                                        <span>📊 {{ record.total_results }} 条结果</span>
+                                        <span>📅 {{ formatDate(record.created_at) }}</span>
+                                    </div>
+                                </div>
+                                <button @click.stop="deleteHistory(record.id)"
+                                        class="text-red-500 hover:text-red-700">
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="text-center py-12 text-gray-500">
+                        暂无搜索历史
+                    </div>
+                    
+                    <!-- 分页 -->
+                    <div v-if="historyPagination.total_pages > 1" class="flex justify-center mt-6 space-x-2">
+                        <button v-for="page in historyPagination.total_pages" :key="page"
+                                @click="loadHistory(page)"
+                                :class="historyPagination.page === page ? 'gradient-bg text-white' : 'bg-gray-100 text-gray-700'"
+                                class="w-10 h-10 rounded-lg">
+                            {{ page }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 统计页面 -->
+            <div v-show="activeTab === 'stats'">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="glass rounded-xl card-shadow p-6">
+                        <div class="text-3xl font-bold text-green-600">{{ stats.total_searches || 0 }}</div>
+                        <div class="text-gray-600">总搜索次数</div>
+                    </div>
+                    <div class="glass rounded-xl card-shadow p-6">
+                        <div class="text-3xl font-bold text-green-700">{{ stats.total_trials || 0 }}</div>
+                        <div class="text-gray-600">临床试验数据</div>
+                    </div>
+                    <div class="glass rounded-xl card-shadow p-6">
+                        <div class="text-3xl font-bold text-green-600">{{ stats.total_articles || 0 }}</div>
+                        <div class="text-gray-600">文献数据</div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="glass rounded-xl card-shadow p-6">
+                        <h3 class="font-bold text-gray-800 mb-4">热门搜索</h3>
+                        <div v-if="stats.popular_queries && stats.popular_queries.length" class="space-y-2">
+                            <div v-for="(item, index) in stats.popular_queries" :key="index"
+                                 class="flex items-center justify-between py-2 border-b">
+                                <span>{{ item.query }}</span>
+                                <span class="text-green-600 font-medium">{{ item.count }} 次</span>
+                            </div>
+                        </div>
+                        <div v-else class="text-gray-500 text-center py-8">暂无数据</div>
+                    </div>
+                    
+                    <div class="glass rounded-xl card-shadow p-6">
+                        <h3 class="font-bold text-gray-800 mb-4">数据源分布</h3>
+                        <div v-if="stats.source_distribution" class="space-y-4">
+                            <div v-for="(count, source) in stats.source_distribution" :key="source">
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span>{{ sourceNames[source] || source }}</span>
+                                    <span>{{ count }}</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div class="gradient-bg h-2 rounded-full" 
+                                         :style="{ width: getSourcePercentage(count) + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="text-gray-500 text-center py-8">暂无数据</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Toast通知 -->
+        <transition name="fade">
+            <div v-if="toast.show" 
+                 :class="toast.type === 'error' ? 'bg-red-500' : toast.type === 'success' ? 'bg-green-500' : 'bg-blue-500'"
+                 class="fixed bottom-4 right-4 text-white px-6 py-3 rounded-lg shadow-lg z-50">
+                {{ toast.message }}
+            </div>
+        </transition>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+        
+        createApp({
+            setup() {
+                // API基础URL - 后端服务地址
+                const API_BASE = 'http://localhost:8000';
+                
+                // 状态
+                const activeTab = ref('search');
+                const searchQuery = ref('');
+                const searching = ref(false);
+                const currentTask = ref(null);
+                const parsedQuery = ref(null);
+                const searchResults = ref(null);
+                const resultTab = ref('trials');
+                
+                // 分页状态
+                const pagination = reactive({
+                    trials: {
+                        currentPage: 1,
+                        pageSize: 20
+                    },
+                    literature: {
+                        currentPage: 1,
+                        pageSize: 20
+                    },
+                    preprints: {
+                        currentPage: 1,
+                        pageSize: 20
+                    }
+                });
+                
+                // 页面大小选项
+                const pageSizeOptions = [10, 20, 50, 100];
+                
+                const searchOptions = reactive({
+                    useLLM: true,
+                    sources: ['clinicaltrials', 'pubmed'],
+                    maxResults: 100
+                });
+                
+                const systemStatus = reactive({ connected: false });
+                const historyData = ref([]);
+                const historyKeyword = ref('');
+                const historyPagination = reactive({ page: 1, total_pages: 1 });
+                const stats = ref({});
+                
+                const toast = reactive({ show: false, message: '', type: 'info' });
+                
+                // 常量
+                const exampleQueries = [
+                    'B群脑膜炎球菌疫苗临床试验',
+                    '新冠疫苗三期临床试验进展',
+                    '儿童疫苗安全性研究',
+                    'mRNA疫苗技术最新研究'
+                ];
+                
+                const sourceNames = {
+                    clinicaltrials: 'ClinicalTrials.gov',
+                    pubmed: 'PubMed',
+                    semantic_scholar: 'Semantic Scholar',
+                    biorxiv: 'bioRxiv',
+                    medrxiv: 'medRxiv',
+                    openalex: 'OpenAlex',
+                    europe_pmc: 'Europe PMC'
+                };
+                
+                const statusText = {
+                    pending: '等待中',
+                    processing: '处理中',
+                    completed: '已完成',
+                    failed: '失败'
+                };
+                
+                const statusColors = {
+                    'RECRUITING': 'bg-green-100 text-green-700',
+                    'ACTIVE': 'bg-blue-100 text-blue-700',
+                    'COMPLETED': 'bg-gray-100 text-gray-700',
+                    'TERMINATED': 'bg-red-100 text-red-700',
+                    'SUSPENDED': 'bg-yellow-100 text-yellow-700'
+                };
+                
+                // 计算属性
+                const trialsData = computed(() => {
+                    if (!searchResults.value) return [];
+                    const trialsResult = searchResults.value.results?.find(r => r.source === 'clinicaltrials');
+                    return trialsResult?.data || [];
+                });
+                
+                const literatureData = computed(() => {
+                    if (!searchResults.value) return [];
+                    // 合并所有文献类型的数据
+                    const literatureSources = ['pubmed', 'semantic_scholar', 'openalex', 'europe_pmc'];
+                    let allLiterature = [];
+                    for (const source of literatureSources) {
+                        const result = searchResults.value.results?.find(r => r.source === source);
+                        if (result?.data) {
+                            allLiterature = allLiterature.concat(result.data.map(item => ({...item, _source: source})));
+                        }
+                    }
+                    return allLiterature;
+                });
+                
+                const preprintData = computed(() => {
+                    if (!searchResults.value) return [];
+                    // 合并预印本数据
+                    const preprintSources = ['biorxiv', 'medrxiv'];
+                    let allPreprints = [];
+                    for (const source of preprintSources) {
+                        const result = searchResults.value.results?.find(r => r.source === source);
+                        if (result?.data) {
+                            allPreprints = allPreprints.concat(result.data.map(item => ({...item, _source: source})));
+                        }
+                    }
+                    return allPreprints;
+                });
+                
+                // 分页后的数据
+                const paginatedTrialsData = computed(() => {
+                    const { currentPage, pageSize } = pagination.trials;
+                    const start = (currentPage - 1) * pageSize;
+                    const end = start + pageSize;
+                    return trialsData.value.slice(start, end);
+                });
+                
+                const paginatedLiteratureData = computed(() => {
+                    const { currentPage, pageSize } = pagination.literature;
+                    const start = (currentPage - 1) * pageSize;
+                    const end = start + pageSize;
+                    return literatureData.value.slice(start, end);
+                });
+                
+                const paginatedPreprintData = computed(() => {
+                    const { currentPage, pageSize } = pagination.preprints;
+                    const start = (currentPage - 1) * pageSize;
+                    const end = start + pageSize;
+                    return preprintData.value.slice(start, end);
+                });
+                
+                // 获取特定数据源的数据
+                const getSourceData = (sourceId) => {
+                    if (!searchResults.value) return [];
+                    const result = searchResults.value.results?.find(r => r.source === sourceId);
+                    return result?.data || [];
+                };
+                
+                // 方法
+                const showToast = (message, type = 'info') => {
+                    toast.message = message;
+                    toast.type = type;
+                    toast.show = true;
+                    setTimeout(() => { toast.show = false; }, 3000);
+                };
+                
+                const checkSystemStatus = async () => {
+                    try {
+                        const response = await axios.get(`${API_BASE}/health`);
+                        systemStatus.connected = response.data.ollama_status?.connected || false;
+                    } catch (error) {
+                        systemStatus.connected = false;
+                    }
+                };
+                
+                const performSearch = async () => {
+                    if (!searchQuery.value.trim() || searching.value) return;
+                    
+                    searching.value = true;
+                    currentTask.value = null;
+                    parsedQuery.value = null;
+                    searchResults.value = null;
+                    
+                    // 重置所有分页状态
+                    pagination.trials.currentPage = 1;
+                    pagination.trials.pageSize = 20;
+                    pagination.literature.currentPage = 1;
+                    pagination.literature.pageSize = 20;
+                    pagination.preprints.currentPage = 1;
+                    pagination.preprints.pageSize = 20;
+                    
+                    try {
+                        const response = await axios.post(`${API_BASE}/api/search`, {
+                            query: searchQuery.value,
+                            max_results: searchOptions.maxResults,
+                            sources: searchOptions.sources,
+                            use_llm: searchOptions.useLLM
+                        });
+                        
+                        const taskId = response.data.task_id;
+                        parsedQuery.value = response.data.parsed_query;
+                        
+                        // 轮询任务状态
+                        await pollTaskStatus(taskId);
+                        
+                    } catch (error) {
+                        showToast('搜索请求失败: ' + (error.response?.data?.detail || error.message), 'error');
+                        searching.value = false;
+                    }
+                };
+                
+                const pollTaskStatus = async (taskId) => {
+                    const poll = async () => {
+                        try {
+                            const response = await axios.get(`${API_BASE}/api/task/${taskId}`);
+                            currentTask.value = response.data;
+                            
+                            if (response.data.status === 'completed') {
+                                searching.value = false;
+                                await loadSearchDetail(response.data.result.search_id);
+                                showToast('搜索完成!', 'success');
+                            } else if (response.data.status === 'failed') {
+                                searching.value = false;
+                                showToast('搜索失败: ' + response.data.error, 'error');
+                            } else {
+                                setTimeout(poll, 1000);
+                            }
+                        } catch (error) {
+                            searching.value = false;
+                            showToast('获取任务状态失败', 'error');
+                        }
+                    };
+                    await poll();
+                };
+                
+                const loadSearchDetail = async (searchId) => {
+                    try {
+                        const response = await axios.get(`${API_BASE}/api/search/${searchId}`);
+                        searchResults.value = response.data;
+                    } catch (error) {
+                        showToast('加载搜索结果失败', 'error');
+                    }
+                };
+                
+                const exportData = async (format) => {
+                    // 使用 searchResults.id（搜索记录ID）
+                    const searchId = searchResults.value?.id;
+                    const taskId = currentTask.value?.id;
+                    
+                    if (!searchId && !taskId) {
+                        showToast('没有可导出的数据，请先进行搜索', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        let response;
+                        if (searchId) {
+                            // 使用搜索ID导出（更可靠）
+                            response = await axios.get(`${API_BASE}/api/export/${searchId}`, {
+                                params: { format: format }
+                            });
+                        } else {
+                            // 回退到任务ID导出
+                            response = await axios.post(`${API_BASE}/api/export`, {
+                                task_id: taskId,
+                                format: format
+                            });
+                        }
+                        
+                        // 下载文件
+                        const downloadUrl = `${API_BASE}${response.data.download_url}`;
+                        const link = document.createElement('a');
+                        link.href = downloadUrl;
+                        link.download = response.data.filename || `export.${format}`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        showToast('导出成功!', 'success');
+                    } catch (error) {
+                        console.error('导出错误:', error);
+                        showToast('导出失败: ' + (error.response?.data?.detail || error.message), 'error');
+                    }
+                };
+                
+                const loadHistory = async (page = 1) => {
+                    try {
+                        const response = await axios.get(`${API_BASE}/api/history`, {
+                            params: {
+                                page: page,
+                                page_size: 20,
+                                keyword: historyKeyword.value || undefined
+                            }
+                        });
+                        historyData.value = response.data.data;
+                        historyPagination.page = response.data.page;
+                        historyPagination.total_pages = response.data.total_pages;
+                    } catch (error) {
+                        showToast('加载历史记录失败', 'error');
+                    }
+                };
+                
+                const viewHistoryDetail = async (searchId) => {
+                    activeTab.value = 'search';
+                    await loadSearchDetail(searchId);
+                };
+                
+                const deleteHistory = async (searchId) => {
+                    if (!confirm('确定要删除这条记录吗?')) return;
+                    
+                    try {
+                        await axios.delete(`${API_BASE}/api/search/${searchId}`);
+                        showToast('删除成功', 'success');
+                        loadHistory();
+                    } catch (error) {
+                        showToast('删除失败', 'error');
+                    }
+                };
+                
+                const loadStats = async () => {
+                    try {
+                        const response = await axios.get(`${API_BASE}/api/stats`);
+                        stats.value = response.data;
+                    } catch (error) {
+                        console.error('加载统计数据失败', error);
+                    }
+                };
+                
+                const formatDate = (dateStr) => {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    return date.toLocaleString('zh-CN');
+                };
+                
+                const getSourcePercentage = (count) => {
+                    if (!stats.value.source_distribution) return 0;
+                    const total = Object.values(stats.value.source_distribution).reduce((a, b) => a + b, 0);
+                    return total > 0 ? (count / total * 100).toFixed(1) : 0;
+                };
+                
+                // 分页方法
+                const getTotalPages = (totalItems, pageSize) => {
+                    return Math.ceil(totalItems / pageSize);
+                };
+                
+                const changePage = (dataType, page) => {
+                    if (pagination[dataType]) {
+                        pagination[dataType].currentPage = page;
+                    }
+                };
+                
+                // 获取显示的页码范围（最多显示7个页码）
+                const getPageNumbers = (totalItems, pagin) => {
+                    const totalPages = getTotalPages(totalItems, pagin.pageSize);
+                    const currentPage = pagin.currentPage;
+                    const pageNumbers = [];
+                    
+                    if (totalPages <= 7) {
+                        // 总页数小于等于7，显示所有页码
+                        for (let i = 1; i <= totalPages; i++) {
+                            pageNumbers.push(i);
+                        }
+                    } else {
+                        // 显示当前页附近的页码
+                        if (currentPage <= 4) {
+                            // 当前页在前4页，显示前7页
+                            for (let i = 1; i <= 7; i++) {
+                                pageNumbers.push(i);
+                            }
+                        } else if (currentPage >= totalPages - 3) {
+                            // 当前页在后4页，显示后7页
+                            for (let i = totalPages - 6; i <= totalPages; i++) {
+                                pageNumbers.push(i);
+                            }
+                        } else {
+                            // 显示当前页前后各3页
+                            for (let i = currentPage - 3; i <= currentPage + 3; i++) {
+                                pageNumbers.push(i);
+                            }
+                        }
+                    }
+                    
+                    return pageNumbers;
+                };
+                
+                // 监听Tab切换
+                watch(activeTab, (newTab) => {
+                    if (newTab === 'history') loadHistory();
+                    if (newTab === 'stats') loadStats();
+                });
+                
+                // 初始化
+                onMounted(() => {
+                    checkSystemStatus();
+                    setInterval(checkSystemStatus, 30000);
+                });
+                
+                return {
+                    activeTab, searchQuery, searching, currentTask, parsedQuery,
+                    searchResults, resultTab, searchOptions,
+                    systemStatus, historyData, historyKeyword, historyPagination, stats, toast,
+                    exampleQueries, sourceNames, statusText, statusColors,
+                    trialsData, literatureData, preprintData, getSourceData,
+                    paginatedTrialsData, paginatedLiteratureData, paginatedPreprintData,
+                    pagination, pageSizeOptions,
+                    performSearch, exportData, loadHistory, viewHistoryDetail,
+                    deleteHistory, formatDate, getSourcePercentage,
+                    getTotalPages, changePage, getPageNumbers
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# BioInfo Search System - Python Dependencies
+# 兼容 ollama 库的版本
+
+# Web框架
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+
+# 数据库
+aiosqlite>=0.19.0
+
+# HTTP客户端 (兼容ollama)
+httpx>=0.27.0
+
+# 数据处理
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+
+# 数据验证 (兼容ollama)
+pydantic>=2.9.0
+
+# 工具
+python-dateutil>=2.8.0
+
+# Ollama客户端（可选）
+# ollama>=0.6.0

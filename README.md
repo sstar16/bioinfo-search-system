@@ -263,9 +263,7 @@ A:
 2. 减少并发搜索数量
 3. 定期清理历史数据
 
-## 📄 许可证
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
 
 ## 🙏 致谢
 
@@ -278,7 +276,7 @@ A:
 ## 📞 联系方式
 
 如有问题或建议，请提交 Issue 或联系：
-- 邮箱: your-email@example.com
+- 邮箱: lzhd66@gmail.com
 
 ---
 
